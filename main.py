@@ -1,38 +1,59 @@
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import SimpleRNN, GRU, Dense, TimeDistributed
-from tensorflow.keras.optimizers import RMSprop
+import torch
+import model as M 
 import numpy as np 
+import matplotlib.pyplot as plt 
 
-model = Sequential()
+def diff_encode(x, h=0):
+    y = np.zeros(len(x), dtype=np.int)
+    for i, xi in enumerate(x):
+        # Compute output
+        yi = xi ^ h
+        # Update state for next iteration 
+        h = yi
+        # Store output
+        y[i] = yi
+    return y
 
-# We don't want to specify the sequence length
-model.add(SimpleRNN(4, input_shape = (None, 2), return_sequences=True))
+def encode_seqs(bit_sequences):
+    num_seqs, seq_len = bit_sequences.shape
+    y = np.zeros((num_seqs, seq_len), dtype=np.int)
+    for i, seq in enumerate(bit_sequences):
+        y[i,:] = diff_encode(seq)
+    return y   
 
-# Applies Dense layer to each output
-model.add(TimeDistributed(Dense(2, activation='softmax')))
+def one_hot_encoding(bit_sequences):
+    '''
+    One-hot encode a sequence of bits
+    '''
+    num_seqs, seq_len = bit_sequences.shape
+    x = np.zeros((num_seqs, seq_len, 2), dtype=np.double)
+    for i, seq in enumerate(bit_sequences):
+        for j, bit in enumerate(seq):
+            if bit == 0:
+                x[i,j,:] = [1, 0]
+            elif bit == 1:
+                x[i,j,:] = [0, 1]
+    return x
 
-model.compile(
-    loss = 'sparse_categorical_crossentropy',
-    optimizer = RMSprop(lr = 1.0e-2),
-    metrics = ['accuracy'] )
+def main():
+    model = M.Network()
 
-h = [0,1]
-l = [1,0]
-X = np.array(
-    [ [l, l, l],
-      [h, h, h],
-      [l, h, l],
-      [h, l, h] ]
-)
-y = np.array(
-    [ [[0], [0], [0]],
-      [[1], [0], [1]],
-      [[0], [1], [1]],
-      [[1], [1], [0]] ]
-)
+    x = np.array([
+        [0,0,0],
+        [1,1,1],
+        [0,1,0],
+        [1,0,1],
+        [1,1,0],
+        [0,0,1],
+        [0,1,1],
+        [1,0,0] 
+    ])
 
-model.fit(X, y, epochs = 200)
+    X = one_hot_encoding(x[:])
+    y = encode_seqs(x[:])    
 
-a = np.array([h, l, h, l, h, h]).reshape(1,6,-1)
-#print(a)
-print(model.predict(a))
+    history = M.fit(model, X, y, epochs=300)
+
+if __name__ == '__main__':
+    main()
+
