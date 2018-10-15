@@ -18,7 +18,7 @@ class Network(nn.Module):
         output = self.lin(output)
         return output  
     
-def fit(model, X, y, epochs=1, batch_size=1, lr=1e-2):
+def fit(model, X, y, validation_data=None, epochs=1, batch_size=1, lr=1e-2):
     
     # Initialize the loss function and optimizer
     loss_fn = nn.CrossEntropyLoss() 
@@ -27,25 +27,34 @@ def fit(model, X, y, epochs=1, batch_size=1, lr=1e-2):
     model.double()
     
     # One-hot each sequence in X
-    X = torch.from_numpy(X)
-    y = torch.from_numpy(y)
+
     
     # Training dataset and data loader
+    X = torch.from_numpy(X)
+    y = torch.from_numpy(y)
     dataset_train = data.TensorDataset(X, y)
     loader_train = data.DataLoader(dataset_train, batch_size=batch_size)
     
     # Validation dataset and data loader 
-    
+    if validation_data is not None:
+        Xv, yv = validation_data 
+        Xv = torch.from_numpy(Xv)
+        yv = torch.from_numpy(yv)
+        dataset_valid = data.TensorDataset(Xv, yv)
+        loader_validation = data.DataLoader(dataset_valid, batch_size=batch_size)
+
     # Initialize history
     train_loss = []
     train_acc = []
-    
+    validation_loss = []
+    validation_acc = []
+
     # Main loop
     for i in range(epochs):
         
         # Training Loop
-        epoch_loss = 0.0
-        epoch_acc = 0
+        train_loss_e = 0.0
+        train_errs_e = 0         
         model.train()
         for input_seqs, target_seqs in loader_train:
             optimizer.zero_grad()
@@ -55,26 +64,44 @@ def fit(model, X, y, epochs=1, batch_size=1, lr=1e-2):
             loss.backward()
             optimizer.step()
             
-            epoch_loss += loss.item()
+            train_loss_e += loss.item()
             
             # Evaluate training accuracy
             output_bits = outputs.argmax(dim=1)
             bit_errors = torch.abs(output_bits - target_bits).sum()
-            epoch_acc += bit_errors
+            train_errs_e += bit_errors
             
             # Track gradient information to see how learning is progressing
+
+        # Validation Loop
+        valid_loss_e = 0.0
+        valid_errs_e = 0         
+        model.eval()
+        for input_seqs, target_seqs in loader_validation:
+            outputs = model(input_seqs)
+            target_bits = target_seqs.reshape(-1)
+            loss = loss_fn(outputs, target_bits)
             
+            valid_loss_e += loss.item()
+            
+            # Evaluate training accuracy
+            output_bits = outputs.argmax(dim=1)
+            bit_errors = torch.abs(output_bits - target_bits).sum()
+            valid_errs_e += bit_errors
+
         # Validation loop
         if (i % 10 == 0):
-            print(f'Epoch {i:2d} ........ loss: {epoch_loss: 0.4f} - acc: {epoch_acc: 0.4f}')
+            print(f'Epoch {i:2d} .. train-loss: {train_loss_e: 0.4f} train-errs:{train_errs_e: 0.4f} valid-loss: {valid_loss_e: 0.4f} valid-errs: {valid_errs_e: 0.4f}')
             
-        train_loss.append(epoch_loss)
-        train_acc.append(epoch_acc)
+        train_loss.append(train_loss_e)
+        train_acc.append(train_errs_e)
         
     # Build up the history dictionary
     history = {
         'train_loss': train_loss,
-        'train_acc': train_acc
+        'train_acc': train_acc,
+        'validation_acc': validation_acc,
+        'validation_loss': validation_loss
     }
     
     return history
